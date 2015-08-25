@@ -1,5 +1,7 @@
 FROM debian:jessie
 
+# ===== COMMON =====
+
 # remove several traces of debian python
 RUN apt-get purge -y python.*
 
@@ -29,11 +31,12 @@ RUN set -x \
         zlib1g-dev \
         openjdk-7-jre-headless \
         vim ' \
-    && apt-get update && apt-get install -y $buildDeps --no-install-recommends && rm -rf /var/lib/apt/lists/*
+    && apt-get update && apt-get install -y $buildDeps --no-install-recommends
+
+RUN rm -rf /var/lib/apt/lists/*
 
 
-
-# PYTHON 2
+# ===== PYTHON 2 =====
 
 ENV PYTHON_VERSION 2.7.10
 
@@ -59,13 +62,13 @@ RUN mkdir -p /usr/src/python \
         -exec rm -rf '{}' + \
     && rm -rf /usr/src/python
 
+RUN pip install --no-cache-dir -U pip
 # install "virtualenv", since the vast majority of users of this image will want it
 RUN pip install --no-cache-dir virtualenv
 RUN pip install --no-cache-dir mercurial
 
 
-# PYTHON 3
-
+# ===== PYTHON 3 =====
 
 ENV PYTHON_VERSION 3.4.3
 
@@ -89,30 +92,42 @@ RUN mkdir -p /usr/src/python \
         -exec rm -rf '{}' + \
     && rm -rf /usr/src/python
 
+RUN pip3 install --no-cache-dir -U pip
 
 
-#RUN apt-get purge -y --auto-remove $buildDeps \
+# ===== MONGO DB =====
+
+ENV MONGO_VERSION 2.6.11
+
+RUN curl -SL "https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-$MONGO_VERSION.tgz" -o mongo.tgz \
+    && curl -SL "https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-$MONGO_VERSION.tgz.sig" -o mongo.tgz.sig \
+    && tar -xvf mongo.tgz -C /usr/local --strip-components=1 \
+    && rm mongo.tgz*
+
+VOLUME /data/db
 
 
-# JENKINS
+# ===== JENKINS =====
 
-#RUN apt-get update && \
-    #apt-get --no-install-recommends install -q -y openjdk-7-jre-headless && \
-    #rm -rf /var/lib/apt/lists/*
-
-# Jenkins war file will be get from local storage to speedup image creation (for debugging purposes)
-#ADD http://mirrors.jenkins-ci.org/war/1.624/jenkins.war /opt/jenkins.war
-ADD jenkins/1.624/jenkins.war /opt/jenkins.war
+ADD http://mirrors.jenkins-ci.org/war/1.624/jenkins.war /opt/jenkins.war
 
 RUN chmod 644 /opt/jenkins.war
+
 ENV JENKINS_HOME /jenkins
+ENV JENKINS_USER maxim
 
-RUN groupadd maxim && useradd --create-home --home-dir /home/maxim -g maxim maxim
+RUN groupadd $JENKINS_USER && useradd --create-home --home-dir /home/$JENKINS_USER -g $JENKINS_USER $JENKINS_USER
 
-#ENTRYPOINT ["runuser", "-l", "maxim", "-c", "java", "-jar", "/opt/jenkins.war"]
+RUN mkdir -p /var/lib/jenkins   && chown -R $JENKINS_USER:$JENKINS_USER /var/lib/jenkins
+RUN mkdir -p /var/cache/jenkins && chown -R $JENKINS_USER:$JENKINS_USER /var/cache/jenkins
+RUN mkdir -p /var/log/jenkins   && chown -R $JENKINS_USER:$JENKINS_USER /var/log/jenkins
 
-RUN ln -s /jenkins /home/maxim/.jenkins
+RUN ln -s /jenkins /home/$JENKINS_USER/.jenkins
 
-ENTRYPOINT ["runuser", "-l", "maxim", "-c", "java -jar /opt/jenkins.war"]
+
+# ===== RUNTIME =====
+
+USER $JENKINS_USER
+ENTRYPOINT ["java", "-jar", "/opt/jenkins.war"]
 EXPOSE 8080
 CMD [""]
